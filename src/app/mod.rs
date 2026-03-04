@@ -3,12 +3,14 @@ use std::collections::{HashMap, VecDeque};
 use eframe::egui;
 use tokio::runtime::Runtime;
 
+use crate::app::config_profiles::ProfileEntry;
 use crate::app::state::{Tab, TabKind, TabState};
 use crate::client;
 use crate::models::client::ClientHandle;
 use crate::models::ipc::ClientCommand;
 use crate::models::mqtt::MqttLoginData;
 
+pub(crate) mod config_profiles;
 pub(crate) mod events;
 pub(crate) mod state;
 
@@ -21,6 +23,9 @@ pub struct App {
     pub(crate) rename_buffer: String,
     pub(crate) dragging_tab: Option<u64>,
     pub(crate) mqtt_form: MqttLoginData,
+    pub(crate) profile_entries: Vec<ProfileEntry>,
+    pub(crate) selected_profile_name: Option<String>,
+    pub(crate) profile_status: Option<String>,
     pub(crate) runtime: Runtime,
     pub(crate) clients: HashMap<u64, ClientHandle>,
 }
@@ -32,7 +37,7 @@ impl Default for App {
             .build()
             .expect("failed to create tokio runtime");
 
-        Self {
+        let mut app = Self {
             next_tab_id: 0,
             tabs: Vec::new(),
             active_tab: None,
@@ -41,9 +46,15 @@ impl Default for App {
             rename_buffer: String::new(),
             dragging_tab: None,
             mqtt_form: MqttLoginData::default(),
+            profile_entries: Vec::new(),
+            selected_profile_name: None,
+            profile_status: None,
             runtime,
             clients: HashMap::new(),
-        }
+        };
+
+        app.refresh_profiles();
+        app
     }
 }
 
@@ -226,6 +237,90 @@ impl App {
                 } = &mut tab.state;
                 *connection_status = "Client task is not available".to_string();
                 *last_error = Some("Command channel is closed".to_string());
+            }
+        }
+    }
+
+    pub(crate) fn refresh_profiles(&mut self) {
+        match config_profiles::list_profiles() {
+            Ok(entries) => {
+                self.profile_entries = entries;
+                if let Some(selected) = &self.selected_profile_name {
+                    let exists = self
+                        .profile_entries
+                        .iter()
+                        .any(|entry| &entry.display_name == selected);
+                    if !exists {
+                        self.selected_profile_name = None;
+                    }
+                }
+            }
+            Err(err) => {
+                self.profile_entries.clear();
+                self.selected_profile_name = None;
+                self.profile_status = Some(err);
+            }
+        }
+    }
+
+    pub(crate) fn save_current_profile(&mut self) {
+        let profile_name = self.mqtt_form.name.trim();
+        if profile_name.is_empty() {
+            self.profile_status = Some("Name is required to save configuration".to_string());
+            return;
+        }
+
+        match config_profiles::save_profile(profile_name, &self.mqtt_form) {
+            Ok(()) => {
+                self.selected_profile_name = Some(profile_name.to_string());
+                self.profile_status = Some(format!("Saved profile '{profile_name}'"));
+                self.refresh_profiles();
+            }
+            Err(err) => {
+                self.profile_status = Some(err);
+            }
+        }
+    }
+
+    pub(crate) fn load_profile_into_form(&mut self, profile_name: &str) {
+        let Some(entry) = self
+            .profile_entries
+            .iter()
+            .find(|entry| entry.display_name == profile_name)
+        else {
+            self.profile_status = Some(format!("Profile '{profile_name}' not found"));
+            return;
+        };
+
+        match config_profiles::load_profile_file(&entry.file_path) {
+            Ok(login) => {
+                self.mqtt_form = login;
+                self.selected_profile_name = Some(profile_name.to_string());
+                self.profile_status = Some(format!("Loaded profile '{profile_name}'"));
+            }
+            Err(err) => {
+                self.profile_status = Some(err);
+            }
+        }
+    }
+
+    pub(crate) fn load_template_from_file_picker(&mut self) {
+        let file = rfd::FileDialog::new()
+            .add_filter("TOML", &["toml"])
+            .pick_file();
+
+        let Some(path) = file else {
+            return;
+        };
+
+        match config_profiles::load_template_file(&path) {
+            Ok(login) => {
+                self.mqtt_form = login;
+                self.selected_profile_name = None;
+                self.profile_status = Some(format!("Loaded template {}", path.display()));
+            }
+            Err(err) => {
+                self.profile_status = Some(err);
             }
         }
     }

@@ -235,6 +235,9 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
     if app.show_mqtt_popup {
         let mut open = app.show_mqtt_popup;
         let mut create_client = false;
+        let mut save_profile = false;
+        let mut profile_to_load: Option<String> = None;
+        let mut load_template = false;
 
         egui::Window::new("MQTT Login")
             .collapsible(false)
@@ -242,7 +245,11 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
-                    ui.label("Name (optional)");
+                    if let Some(status) = &app.profile_status {
+                        ui.label(status);
+                    }
+
+                    ui.label("Name");
                     ui.text_edit_singleline(&mut app.mqtt_form.name);
 
                     ui.label("Broker");
@@ -250,6 +257,21 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
 
                     ui.label("Port");
                     ui.text_edit_singleline(&mut app.mqtt_form.port);
+
+                    egui::CollapsingHeader::new("Connection")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Keep alive (seconds)");
+                                ui.add(
+                                    egui::DragValue::new(&mut app.mqtt_form.keep_alive_secs)
+                                        .range(1..=u16::MAX),
+                                );
+                            });
+
+                            ui.label("Client ID (optional)");
+                            ui.text_edit_singleline(&mut app.mqtt_form.client_id);
+                        });
 
                     egui::CollapsingHeader::new("Login credentials")
                         .default_open(false)
@@ -284,11 +306,58 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                         });
 
                     ui.add_space(8.0);
-                    if ui.button("Add client").clicked() {
-                        create_client = true;
-                    }
+                    ui.horizontal(|ui| {
+                        let selected_profile_text = app
+                            .selected_profile_name
+                            .as_deref()
+                            .unwrap_or("Load configuration");
+
+                        if ui.button("Save template").clicked() {
+                            save_profile = true;
+                        }
+
+                        egui::ComboBox::from_id_salt("mqtt_config_picker")
+                            .selected_text(selected_profile_text)
+                            .show_ui(ui, |ui| {
+                                for entry in &app.profile_entries {
+                                    let selected = app
+                                        .selected_profile_name
+                                        .as_ref()
+                                        .is_some_and(|current| current == &entry.display_name);
+                                    if ui
+                                        .selectable_label(selected, &entry.display_name)
+                                        .clicked()
+                                    {
+                                        profile_to_load = Some(entry.display_name.clone());
+                                        ui.close();
+                                    }
+                                }
+
+                                ui.separator();
+                                if ui.selectable_label(false, "Load template from file...").clicked() {
+                                    load_template = true;
+                                    ui.close();
+                                }
+                            });
+
+                        if ui.button("Add client").clicked() {
+                            create_client = true;
+                        }
+                    });
                 });
             });
+
+        if save_profile {
+            app.save_current_profile();
+        }
+
+        if let Some(profile_name) = profile_to_load {
+            app.load_profile_into_form(&profile_name);
+        }
+
+        if load_template {
+            app.load_template_from_file_picker();
+        }
 
         if create_client {
             app.new_tab(TabKind::Client, app.mqtt_form.clone());

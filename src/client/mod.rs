@@ -13,7 +13,8 @@ pub(crate) fn spawn_client(runtime: &Runtime, tab_id: u64, login: MqttLoginData)
     let (event_tx, event_rx) = mpsc::channel();
     let (command_tx, mut command_rx) = tokio_mpsc::unbounded_channel::<ClientCommand>();
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
-    let client_id = format!("mqui-client-{}-{tab_id}", std::process::id());
+    let client_id = login.effective_client_id(tab_id);
+    let keep_alive_secs = login.effective_keep_alive_secs();
 
     let join_handle = runtime.spawn(async move {
         let _ = event_tx.send(ClientEvent::Status("Connecting to broker...".to_string()));
@@ -39,7 +40,7 @@ pub(crate) fn spawn_client(runtime: &Runtime, tab_id: u64, login: MqttLoginData)
         }
 
         let mut connect_builder = match mqtt_ep::packet::v5_0::Connect::builder().client_id(&client_id) {
-            Ok(builder) => builder.keep_alive(60).clean_start(true),
+            Ok(builder) => builder.keep_alive(keep_alive_secs).clean_start(true),
             Err(err) => {
                 let _ = event_tx.send(ClientEvent::Disconnected(format!("Client ID setup failed: {err}")));
                 let _ = endpoint.close().await;
