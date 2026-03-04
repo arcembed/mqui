@@ -84,12 +84,10 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                                         if ui.input(|i| i.pointer.any_released())
                                             && app.dragging_tab.is_some()
                                             && tab_response.hovered()
+                                            && let Some(source_id) = app.dragging_tab
+                                            && source_id != tab_id
                                         {
-                                            if let Some(source_id) = app.dragging_tab {
-                                                if source_id != tab_id {
-                                                    tab_reorder = Some((source_id, tab_id));
-                                                }
-                                            }
+                                            tab_reorder = Some((source_id, tab_id));
                                         }
 
                                         tab_response.context_menu(|ui| {

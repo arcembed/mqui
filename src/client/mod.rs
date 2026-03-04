@@ -409,22 +409,22 @@ pub(crate) fn spawn_client(runtime: &Runtime, tab_id: u64, login: MqttLoginData)
                         }
                         mqtt_ep::packet::Packet::V5_0Pubrec(pubrec) => {
                             let packet_id = pubrec.packet_id();
-                            if let Some((_, waiting_for_pubcomp)) = pending_publish.get_mut(&packet_id) {
-                                if *waiting_for_pubcomp {
-                                    let pubrel = match mqtt_ep::packet::v5_0::Pubrel::builder()
-                                        .packet_id(packet_id)
-                                        .build()
-                                    {
-                                        Ok(packet) => packet,
-                                        Err(err) => {
-                                            let _ = event_tx.send(ClientEvent::Error(format!("Failed to build PUBREL: {err}")));
-                                            continue;
-                                        }
-                                    };
-
-                                    if let Err(err) = endpoint.send(pubrel).await {
-                                        let _ = event_tx.send(ClientEvent::Error(format!("Failed to send PUBREL: {err}")));
+                            if let Some((_, waiting_for_pubcomp)) = pending_publish.get_mut(&packet_id)
+                                && *waiting_for_pubcomp
+                            {
+                                let pubrel = match mqtt_ep::packet::v5_0::Pubrel::builder()
+                                    .packet_id(packet_id)
+                                    .build()
+                                {
+                                    Ok(packet) => packet,
+                                    Err(err) => {
+                                        let _ = event_tx.send(ClientEvent::Error(format!("Failed to build PUBREL: {err}")));
+                                        continue;
                                     }
+                                };
+
+                                if let Err(err) = endpoint.send(pubrel).await {
+                                    let _ = event_tx.send(ClientEvent::Error(format!("Failed to send PUBREL: {err}")));
                                 }
                             }
                         }

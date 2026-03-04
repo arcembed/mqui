@@ -55,7 +55,7 @@ impl LoginTemplateFile {
         }
     }
 
-    fn to_login(self) -> MqttLoginData {
+    fn into_login(self) -> MqttLoginData {
         MqttLoginData {
             name: self.name,
             broker: self.broker,
@@ -137,7 +137,7 @@ pub(crate) fn load_profile_file(path: &Path) -> Result<MqttLoginData, String> {
         fs::read_to_string(path).map_err(|err| format!("Failed to read {}: {err}", path.display()))?;
     let template: LoginTemplateFile = toml::from_str(&contents)
         .map_err(|err| format!("Failed to parse TOML {}: {err}", path.display()))?;
-    Ok(template.to_login())
+    Ok(template.into_login())
 }
 
 pub(crate) fn load_template_file(path: &Path) -> Result<MqttLoginData, String> {

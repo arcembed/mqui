@@ -228,16 +228,16 @@ impl App {
             return;
         };
 
-        if client.command_tx.send(command).is_err() {
-            if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                let TabState::Client {
-                    connection_status,
-                    last_error,
-                    ..
-                } = &mut tab.state;
-                *connection_status = "Client task is not available".to_string();
-                *last_error = Some("Command channel is closed".to_string());
-            }
+        if client.command_tx.send(command).is_err()
+            && let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == tab_id)
+        {
+            let TabState::Client {
+                connection_status,
+                last_error,
+                ..
+            } = &mut tab.state;
+            *connection_status = "Client task is not available".to_string();
+            *last_error = Some("Command channel is closed".to_string());
         }
     }
 
