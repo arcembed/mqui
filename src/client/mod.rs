@@ -5,8 +5,8 @@ use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::sync::{Arc, Once};
 use std::sync::mpsc;
+use std::sync::{Arc, Once};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 use tokio_tungstenite::client_async;
@@ -78,7 +78,10 @@ fn ensure_rustls_crypto_provider() {
     });
 }
 
-fn build_tls_config(login: &MqttLoginData, domain: &str) -> Result<Option<Arc<ClientConfig>>, String> {
+fn build_tls_config(
+    login: &MqttLoginData,
+    domain: &str,
+) -> Result<Option<Arc<ClientConfig>>, String> {
     if domain.trim().is_empty() {
         return Err("TLS transport requires a non-empty server name".to_string());
     }
@@ -104,8 +107,8 @@ fn build_tls_config(login: &MqttLoginData, domain: &str) -> Result<Option<Arc<Cl
             let mut reader = BufReader::new(file);
             let mut found_cert = false;
             for cert in rustls_pemfile::certs(&mut reader) {
-                let cert = cert
-                    .map_err(|err| format!("Failed to read CA PEM file '{path}': {err}"))?;
+                let cert =
+                    cert.map_err(|err| format!("Failed to read CA PEM file '{path}': {err}"))?;
                 root_store.add(cert).map_err(|err| {
                     format!("Failed to add certificate from CA PEM file '{path}': {err}")
                 })?;
@@ -113,7 +116,9 @@ fn build_tls_config(login: &MqttLoginData, domain: &str) -> Result<Option<Arc<Cl
             }
 
             if !found_cert {
-                return Err(format!("CA PEM file '{path}' did not contain any certificates"));
+                return Err(format!(
+                    "CA PEM file '{path}' did not contain any certificates"
+                ));
             }
 
             Ok(Some(Arc::new(
@@ -182,8 +187,8 @@ async fn connect_transport(
                 .map_err(|err| format!("WebSocket TCP connect failed: {err}"))?;
             let request = build_websocket_request(&resolved.addr, path)?;
             let (stream, _response) = client_async(request, tcp_stream)
-            .await
-            .map_err(|err| format!("WebSocket connect failed: {err}"))?;
+                .await
+                .map_err(|err| format!("WebSocket connect failed: {err}"))?;
             Box::new(mqtt_ep::transport::WebSocketTransport::from_tcp_client_stream(stream))
         }
         TransportKind::Wss => {

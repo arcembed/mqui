@@ -29,8 +29,13 @@ pub(crate) enum ClientEvent {
 pub(crate) enum ClientCommand {
     Disconnect,
     ForceDisconnect,
-    Subscribe { topic: String, qos: u8 },
-    Unsubscribe { topic: String },
+    Subscribe {
+        topic: String,
+        qos: u8,
+    },
+    Unsubscribe {
+        topic: String,
+    },
     Publish {
         topic: String,
         payload: Vec<u8>,

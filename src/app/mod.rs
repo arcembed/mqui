@@ -68,7 +68,9 @@ impl App {
                 let custom_name = mqtt_login.name.trim();
                 let title = if !custom_name.is_empty() {
                     custom_name.to_string()
-                } else if mqtt_login.connection_mode == crate::models::mqtt::ConnectionInputMode::Url {
+                } else if mqtt_login.connection_mode
+                    == crate::models::mqtt::ConnectionInputMode::Url
+                {
                     let connection_url = mqtt_login.connection_url.trim();
                     if !connection_url.is_empty() {
                         connection_url.to_string()

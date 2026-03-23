@@ -5,9 +5,7 @@ use std::hash::{Hash, Hasher};
 use crate::app::App;
 use crate::app::state::{TabKind, TabState};
 use crate::models::ipc::ClientCommand;
-use crate::models::mqtt::{
-    ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind,
-};
+use crate::models::mqtt::{ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind};
 use crate::ui::widgets::qos_picker;
 use crate::utils::formatting::{format_payload, format_timestamp};
 
@@ -380,12 +378,17 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
 
                             let active_transport = match app.mqtt_form.connection_mode {
                                 ConnectionInputMode::Structured => Some(app.mqtt_form.transport),
-                                ConnectionInputMode::Url => {
-                                    app.mqtt_form.resolve_connection().ok().map(|resolved| resolved.transport)
-                                }
+                                ConnectionInputMode::Url => app
+                                    .mqtt_form
+                                    .resolve_connection()
+                                    .ok()
+                                    .map(|resolved| resolved.transport),
                             };
 
-                            if matches!(active_transport, Some(TransportKind::Tls | TransportKind::Wss)) {
+                            if matches!(
+                                active_transport,
+                                Some(TransportKind::Tls | TransportKind::Wss)
+                            ) {
                                 ui.separator();
                                 ui.horizontal(|ui| {
                                     ui.label("TLS verification");
@@ -409,13 +412,16 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                                 if app.mqtt_form.tls_verification == TlsVerificationMode::CustomCa {
                                     ui.label("CA PEM file");
                                     ui.horizontal(|ui| {
-                                        ui.text_edit_singleline(&mut app.mqtt_form.tls_ca_cert_path);
+                                        ui.text_edit_singleline(
+                                            &mut app.mqtt_form.tls_ca_cert_path,
+                                        );
                                         if ui.button("Browse...").clicked()
                                             && let Some(path) = rfd::FileDialog::new()
                                                 .add_filter("PEM", &["pem", "crt", "cer"])
                                                 .pick_file()
                                         {
-                                            app.mqtt_form.tls_ca_cert_path = path.display().to_string();
+                                            app.mqtt_form.tls_ca_cert_path =
+                                                path.display().to_string();
                                         }
                                     });
                                 }
@@ -494,9 +500,7 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                                         .selected_profile_name
                                         .as_ref()
                                         .is_some_and(|current| current == &entry.display_name);
-                                    if ui
-                                        .selectable_label(selected, &entry.display_name)
-                                        .clicked()
+                                    if ui.selectable_label(selected, &entry.display_name).clicked()
                                     {
                                         profile_to_load = Some(entry.display_name.clone());
                                         ui.close();
@@ -504,7 +508,10 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                                 }
 
                                 ui.separator();
-                                if ui.selectable_label(false, "Load template from file...").clicked() {
+                                if ui
+                                    .selectable_label(false, "Load template from file...")
+                                    .clicked()
+                                {
                                     load_template = true;
                                     ui.close();
                                 }
@@ -629,9 +636,12 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                                     let (topic_response, qos_response) = ui
                                         .horizontal(|ui| {
                                             let color = topic_color_for(&entry.topic, ui.visuals());
-                                            let topic_response = topic_label(ui, &entry.topic, color);
-                                            let qos_response = ui
-                                                .add(egui::Label::new(format!("(QoS {})", entry.qos)).sense(egui::Sense::click()));
+                                            let topic_response =
+                                                topic_label(ui, &entry.topic, color);
+                                            let qos_response = ui.add(
+                                                egui::Label::new(format!("(QoS {})", entry.qos))
+                                                    .sense(egui::Sense::click()),
+                                            );
                                             if ui.small_button("Remove").clicked() {
                                                 remove_topic = Some(entry.topic.clone());
                                             }
@@ -715,8 +725,9 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                         } else {
                             let mut changed = new_topic != original_topic;
                             if !changed
-                                && let Some(existing) =
-                                    subscriptions.iter().find(|entry| entry.topic == original_topic)
+                                && let Some(existing) = subscriptions
+                                    .iter()
+                                    .find(|entry| entry.topic == original_topic)
                             {
                                 changed = existing.qos != *editing_subscription_qos;
                             }

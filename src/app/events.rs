@@ -37,8 +37,13 @@ pub(crate) fn pump_client_events(app: &mut App) {
                     *connection_status = "Disconnected".to_string();
                     *last_error = Some(msg);
                 }
-                Ok(ClientEvent::Subscribed { topic, qos, details }) => {
-                    if let Some(entry) = subscriptions.iter_mut().find(|entry| entry.topic == topic) {
+                Ok(ClientEvent::Subscribed {
+                    topic,
+                    qos,
+                    details,
+                }) => {
+                    if let Some(entry) = subscriptions.iter_mut().find(|entry| entry.topic == topic)
+                    {
                         entry.qos = qos;
                     } else {
                         subscriptions.push(SubscriptionEntry {
