@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-use crate::models::mqtt::MqttLoginData;
+use crate::models::mqtt::{
+    ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProfileEntry {
@@ -36,6 +38,18 @@ struct LoginTemplateFile {
     testament_qos: u8,
     #[serde(default)]
     testament_retain: bool,
+    #[serde(default)]
+    connection_mode: ConnectionInputMode,
+    #[serde(default)]
+    connection_url: String,
+    #[serde(default)]
+    transport: TransportKind,
+    #[serde(default = "default_ws_path")]
+    ws_path: String,
+    #[serde(default)]
+    tls_verification: TlsVerificationMode,
+    #[serde(default)]
+    tls_ca_cert_path: String,
 }
 
 impl LoginTemplateFile {
@@ -52,6 +66,12 @@ impl LoginTemplateFile {
             testament_topic: login.testament_topic.clone(),
             testament_qos: login.testament_qos,
             testament_retain: login.testament_retain,
+            connection_mode: login.connection_mode,
+            connection_url: login.connection_url.clone(),
+            transport: login.transport,
+            ws_path: login.ws_path.clone(),
+            tls_verification: login.tls_verification,
+            tls_ca_cert_path: login.tls_ca_cert_path.clone(),
         }
     }
 
@@ -68,6 +88,12 @@ impl LoginTemplateFile {
             testament_topic: self.testament_topic,
             testament_qos: self.testament_qos,
             testament_retain: self.testament_retain,
+            connection_mode: self.connection_mode,
+            connection_url: self.connection_url,
+            transport: self.transport,
+            ws_path: self.ws_path,
+            tls_verification: self.tls_verification,
+            tls_ca_cert_path: self.tls_ca_cert_path,
         }
     }
 }
@@ -170,5 +196,70 @@ fn safe_file_name(value: &str) -> String {
         "profile".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+fn default_ws_path() -> String {
+    "/mqtt".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LoginTemplateFile;
+    use crate::models::mqtt::{
+        ConnectionInputMode, TlsVerificationMode, TransportKind,
+    };
+
+    #[test]
+    fn old_profiles_load_with_transport_defaults() {
+        let template = toml::from_str::<LoginTemplateFile>(
+            r#"
+name = "Legacy"
+broker = "broker.example.com"
+port = "1883"
+keep_alive_secs = 30
+"#,
+        )
+        .unwrap();
+
+        let login = template.into_login();
+        assert_eq!(login.connection_mode, ConnectionInputMode::Structured);
+        assert_eq!(login.transport, TransportKind::Tcp);
+        assert_eq!(login.ws_path, "/mqtt");
+        assert_eq!(login.tls_verification, TlsVerificationMode::SystemRoots);
+        assert!(login.tls_ca_cert_path.is_empty());
+    }
+
+    #[test]
+    fn profiles_round_trip_transport_fields() {
+        let template = LoginTemplateFile {
+            profile_name: Some("secure".to_string()),
+            name: "Secure Broker".to_string(),
+            broker: "broker.example.com".to_string(),
+            port: "443".to_string(),
+            username: "alice".to_string(),
+            client_id: "client-1".to_string(),
+            keep_alive_secs: 45,
+            testament_and_last_will: "bye".to_string(),
+            testament_topic: "last/will".to_string(),
+            testament_qos: 1,
+            testament_retain: true,
+            connection_mode: ConnectionInputMode::Url,
+            connection_url: "wss://broker.example.com/mqtt".to_string(),
+            transport: TransportKind::Wss,
+            ws_path: "/mqtt".to_string(),
+            tls_verification: TlsVerificationMode::CustomCa,
+            tls_ca_cert_path: "/tmp/ca.pem".to_string(),
+        };
+
+        let serialized = toml::to_string_pretty(&template).unwrap();
+        let round_tripped = toml::from_str::<LoginTemplateFile>(&serialized).unwrap();
+
+        assert_eq!(round_tripped.connection_mode, ConnectionInputMode::Url);
+        assert_eq!(round_tripped.connection_url, "wss://broker.example.com/mqtt");
+        assert_eq!(round_tripped.transport, TransportKind::Wss);
+        assert_eq!(round_tripped.ws_path, "/mqtt");
+        assert_eq!(round_tripped.tls_verification, TlsVerificationMode::CustomCa);
+        assert_eq!(round_tripped.tls_ca_cert_path, "/tmp/ca.pem");
     }
 }
