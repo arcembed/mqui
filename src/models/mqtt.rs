@@ -163,38 +163,22 @@ impl MqttLoginData {
 
     pub(crate) fn username_opt(&self) -> Option<&str> {
         let value = self.username.trim();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value)
-        }
+        if value.is_empty() { None } else { Some(value) }
     }
 
     pub(crate) fn password_opt(&self) -> Option<&str> {
         let value = self.password.trim();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value)
-        }
+        if value.is_empty() { None } else { Some(value) }
     }
 
     pub(crate) fn testament_and_last_will_opt(&self) -> Option<&str> {
         let value = self.testament_and_last_will.trim();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value)
-        }
+        if value.is_empty() { None } else { Some(value) }
     }
 
     pub(crate) fn testament_topic_opt(&self) -> Option<&str> {
         let value = self.testament_topic.trim();
-        if value.is_empty() {
-            None
-        } else {
-            Some(value)
-        }
+        if value.is_empty() { None } else { Some(value) }
     }
 
     pub(crate) fn effective_client_id(&self, tab_id: u64) -> String {
@@ -228,7 +212,8 @@ impl MqttLoginData {
 
     fn resolve_structured_connection(&self) -> Result<ResolvedConnection, String> {
         let transport = self.transport;
-        let (host, port) = resolve_structured_host_and_port(self.broker.trim(), self.port.trim(), transport)?;
+        let (host, port) =
+            resolve_structured_host_and_port(self.broker.trim(), self.port.trim(), transport)?;
         let addr = format_addr(&host, port);
         let ws_path = transport
             .uses_websocket()
@@ -274,7 +259,9 @@ impl MqttLoginData {
             .ok_or_else(|| "Connection URL must include a host".to_string())
             .map(host_to_string)?;
         let port = url.port().unwrap_or_else(|| transport.default_port());
-        let ws_path = transport.uses_websocket().then(|| normalize_url_path(url.path()));
+        let ws_path = transport
+            .uses_websocket()
+            .then(|| normalize_url_path(url.path()));
         let display_label = build_display_label(transport, &host, port, ws_path.as_deref());
 
         Ok(ResolvedConnection {
@@ -367,6 +354,10 @@ fn normalize_host(input: &str) -> Result<String, String> {
     let trimmed = input.trim();
     let host = trim_brackets(trimmed);
 
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return Ok(ip.to_string());
+    }
+
     Host::parse(host)
         .map(host_to_string)
         .map_err(|err| format!("Invalid broker host '{trimmed}': {err}"))
@@ -433,9 +424,7 @@ fn build_display_label(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind,
-    };
+    use super::{ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind};
 
     fn default_login() -> MqttLoginData {
         MqttLoginData::default()
@@ -486,7 +475,12 @@ mod tests {
         let cases = [
             ("mqtt://host", TransportKind::Tcp, "host:1883", None),
             ("mqtts://host", TransportKind::Tls, "host:8883", None),
-            ("ws://host:8080/mqtt", TransportKind::Ws, "host:8080", Some("/mqtt")),
+            (
+                "ws://host:8080/mqtt",
+                TransportKind::Ws,
+                "host:8080",
+                Some("/mqtt"),
+            ),
             ("wss://host/ws", TransportKind::Wss, "host:443", Some("/ws")),
         ];
 
@@ -507,9 +501,18 @@ mod tests {
         let cases = [
             ("http://host", "Unsupported connection URL scheme 'http'"),
             ("mqtt://", "Connection URL must include a host"),
-            ("mqtt://user:pass@host", "Connection URL must not include username or password"),
-            ("ws://host/path?x=1", "Connection URL must not include a query string"),
-            ("wss://host/path#fragment", "Connection URL must not include a fragment"),
+            (
+                "mqtt://user:pass@host",
+                "Connection URL must not include username or password",
+            ),
+            (
+                "ws://host/path?x=1",
+                "Connection URL must not include a query string",
+            ),
+            (
+                "wss://host/path#fragment",
+                "Connection URL must not include a fragment",
+            ),
         ];
 
         for (url, message) in cases {
@@ -540,6 +543,19 @@ mod tests {
             url.display_connection_label(),
             "mqtts://broker.example.com:8883"
         );
+    }
+
+    #[test]
+    fn structured_ipv6_hosts_are_formatted_correctly() {
+        let mut login = default_login();
+        login.transport = TransportKind::Tls;
+        login.broker = "::1".to_string();
+        login.port = "8883".to_string();
+
+        let resolved = login.resolve_connection().unwrap();
+        assert_eq!(resolved.addr, "[::1]:8883");
+        assert_eq!(resolved.display_label, "mqtts://[::1]:8883");
+        assert_eq!(resolved.tls_domain.as_deref(), Some("::1"));
     }
 
     #[test]

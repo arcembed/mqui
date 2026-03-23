@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-use crate::models::mqtt::{
-    ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind,
-};
+use crate::models::mqtt::{ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProfileEntry {
@@ -159,8 +157,8 @@ pub(crate) fn save_profile(profile_name: &str, login: &MqttLoginData) -> Result<
 }
 
 pub(crate) fn load_profile_file(path: &Path) -> Result<MqttLoginData, String> {
-    let contents =
-        fs::read_to_string(path).map_err(|err| format!("Failed to read {}: {err}", path.display()))?;
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read {}: {err}", path.display()))?;
     let template: LoginTemplateFile = toml::from_str(&contents)
         .map_err(|err| format!("Failed to parse TOML {}: {err}", path.display()))?;
     Ok(template.into_login())
@@ -175,8 +173,12 @@ fn profiles_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "Could not resolve operating system config directory".to_string())?;
 
     let dir = project_dirs.config_dir().join("profiles");
-    fs::create_dir_all(&dir)
-        .map_err(|err| format!("Failed to create profile directory {}: {err}", dir.display()))?;
+    fs::create_dir_all(&dir).map_err(|err| {
+        format!(
+            "Failed to create profile directory {}: {err}",
+            dir.display()
+        )
+    })?;
     Ok(dir)
 }
 
@@ -206,9 +208,7 @@ fn default_ws_path() -> String {
 #[cfg(test)]
 mod tests {
     use super::LoginTemplateFile;
-    use crate::models::mqtt::{
-        ConnectionInputMode, TlsVerificationMode, TransportKind,
-    };
+    use crate::models::mqtt::{ConnectionInputMode, TlsVerificationMode, TransportKind};
 
     #[test]
     fn old_profiles_load_with_transport_defaults() {
@@ -256,10 +256,44 @@ keep_alive_secs = 30
         let round_tripped = toml::from_str::<LoginTemplateFile>(&serialized).unwrap();
 
         assert_eq!(round_tripped.connection_mode, ConnectionInputMode::Url);
-        assert_eq!(round_tripped.connection_url, "wss://broker.example.com/mqtt");
+        assert_eq!(
+            round_tripped.connection_url,
+            "wss://broker.example.com/mqtt"
+        );
         assert_eq!(round_tripped.transport, TransportKind::Wss);
         assert_eq!(round_tripped.ws_path, "/mqtt");
-        assert_eq!(round_tripped.tls_verification, TlsVerificationMode::CustomCa);
+        assert_eq!(
+            round_tripped.tls_verification,
+            TlsVerificationMode::CustomCa
+        );
         assert_eq!(round_tripped.tls_ca_cert_path, "/tmp/ca.pem");
+    }
+
+    #[test]
+    fn profile_toml_uses_readable_transport_strings() {
+        let template = LoginTemplateFile {
+            profile_name: Some("dev".to_string()),
+            name: "Dev Broker".to_string(),
+            broker: "localhost".to_string(),
+            port: "443".to_string(),
+            username: String::new(),
+            client_id: String::new(),
+            keep_alive_secs: 60,
+            testament_and_last_will: String::new(),
+            testament_topic: String::new(),
+            testament_qos: 0,
+            testament_retain: false,
+            connection_mode: ConnectionInputMode::Url,
+            connection_url: "wss://localhost/mqtt".to_string(),
+            transport: TransportKind::Wss,
+            ws_path: "/mqtt".to_string(),
+            tls_verification: TlsVerificationMode::InsecureSkipVerify,
+            tls_ca_cert_path: String::new(),
+        };
+
+        let serialized = toml::to_string_pretty(&template).unwrap();
+        assert!(serialized.contains("connection_mode = \"url\""));
+        assert!(serialized.contains("transport = \"wss\""));
+        assert!(serialized.contains("tls_verification = \"insecure-skip-verify\""));
     }
 }
