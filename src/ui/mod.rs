@@ -5,7 +5,9 @@ use std::hash::{Hash, Hasher};
 use crate::app::App;
 use crate::app::state::{TabKind, TabState};
 use crate::models::ipc::ClientCommand;
-use crate::models::mqtt::MqttLoginData;
+use crate::models::mqtt::{
+    ConnectionInputMode, MqttLoginData, TlsVerificationMode, TransportKind,
+};
 use crate::ui::widgets::qos_picker;
 use crate::utils::formatting::{format_payload, format_timestamp};
 
@@ -310,15 +312,125 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                     ui.label("Name");
                     ui.text_edit_singleline(&mut app.mqtt_form.name);
 
-                    ui.label("Broker");
-                    ui.text_edit_singleline(&mut app.mqtt_form.broker);
-
-                    ui.label("Port");
-                    ui.text_edit_singleline(&mut app.mqtt_form.port);
-
                     egui::CollapsingHeader::new("Connection")
-                        .default_open(false)
+                        .default_open(true)
                         .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Connection mode");
+                                egui::ComboBox::from_id_salt("connection_mode")
+                                    .selected_text(app.mqtt_form.connection_mode.label())
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut app.mqtt_form.connection_mode,
+                                            ConnectionInputMode::Structured,
+                                            ConnectionInputMode::Structured.label(),
+                                        );
+                                        ui.selectable_value(
+                                            &mut app.mqtt_form.connection_mode,
+                                            ConnectionInputMode::Url,
+                                            ConnectionInputMode::Url.label(),
+                                        );
+                                    });
+                            });
+
+                            match app.mqtt_form.connection_mode {
+                                ConnectionInputMode::Structured => {
+                                    ui.label("Broker");
+                                    ui.text_edit_singleline(&mut app.mqtt_form.broker);
+
+                                    ui.label("Port");
+                                    ui.text_edit_singleline(&mut app.mqtt_form.port);
+
+                                    ui.horizontal(|ui| {
+                                        ui.label("Transport");
+                                        egui::ComboBox::from_id_salt("transport_kind")
+                                            .selected_text(app.mqtt_form.transport.label())
+                                            .show_ui(ui, |ui| {
+                                                for transport in [
+                                                    TransportKind::Tcp,
+                                                    TransportKind::Tls,
+                                                    TransportKind::Ws,
+                                                    TransportKind::Wss,
+                                                ] {
+                                                    ui.selectable_value(
+                                                        &mut app.mqtt_form.transport,
+                                                        transport,
+                                                        transport.label(),
+                                                    );
+                                                }
+                                            });
+                                    });
+
+                                    if app.mqtt_form.transport.uses_websocket() {
+                                        ui.label("WebSocket path");
+                                        ui.text_edit_singleline(&mut app.mqtt_form.ws_path);
+                                    }
+                                }
+                                ConnectionInputMode::Url => {
+                                    ui.label("Connection URL");
+                                    ui.text_edit_singleline(&mut app.mqtt_form.connection_url);
+
+                                    if !app.mqtt_form.connection_url.trim().is_empty()
+                                        && let Err(err) = app.mqtt_form.resolve_connection()
+                                    {
+                                        ui.colored_label(ui.visuals().warn_fg_color, err);
+                                    }
+                                }
+                            }
+
+                            let active_transport = match app.mqtt_form.connection_mode {
+                                ConnectionInputMode::Structured => Some(app.mqtt_form.transport),
+                                ConnectionInputMode::Url => {
+                                    app.mqtt_form.resolve_connection().ok().map(|resolved| resolved.transport)
+                                }
+                            };
+
+                            if matches!(active_transport, Some(TransportKind::Tls | TransportKind::Wss)) {
+                                ui.separator();
+                                ui.horizontal(|ui| {
+                                    ui.label("TLS verification");
+                                    egui::ComboBox::from_id_salt("tls_verification")
+                                        .selected_text(app.mqtt_form.tls_verification.label())
+                                        .show_ui(ui, |ui| {
+                                            for mode in [
+                                                TlsVerificationMode::SystemRoots,
+                                                TlsVerificationMode::CustomCa,
+                                                TlsVerificationMode::InsecureSkipVerify,
+                                            ] {
+                                                ui.selectable_value(
+                                                    &mut app.mqtt_form.tls_verification,
+                                                    mode,
+                                                    mode.label(),
+                                                );
+                                            }
+                                        });
+                                });
+
+                                if app.mqtt_form.tls_verification == TlsVerificationMode::CustomCa {
+                                    ui.label("CA PEM file");
+                                    ui.horizontal(|ui| {
+                                        ui.text_edit_singleline(&mut app.mqtt_form.tls_ca_cert_path);
+                                        if ui.button("Browse...").clicked()
+                                            && let Some(path) = rfd::FileDialog::new()
+                                                .add_filter("PEM", &["pem", "crt", "cer"])
+                                                .pick_file()
+                                        {
+                                            app.mqtt_form.tls_ca_cert_path = path.display().to_string();
+                                        }
+                                    });
+                                }
+
+                                if app.mqtt_form.tls_verification
+                                    == TlsVerificationMode::InsecureSkipVerify
+                                {
+                                    ui.colored_label(
+                                        ui.visuals().warn_fg_color,
+                                        "Certificate verification is disabled for this connection.",
+                                    );
+                                }
+                            }
+
+                            ui.separator();
                             ui.horizontal(|ui| {
                                 ui.label("Keep alive (seconds)");
                                 ui.add(
@@ -418,9 +530,17 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
         }
 
         if create_client {
-            app.new_tab(TabKind::Client, app.mqtt_form.clone());
-            app.mqtt_form = MqttLoginData::default();
-            open = false;
+            match app.mqtt_form.resolve_connection() {
+                Ok(_) => {
+                    app.new_tab(TabKind::Client, app.mqtt_form.clone());
+                    app.mqtt_form = MqttLoginData::default();
+                    app.profile_status = None;
+                    open = false;
+                }
+                Err(err) => {
+                    app.profile_status = Some(err);
+                }
+            }
         }
 
         app.show_mqtt_popup = open;
@@ -463,7 +583,10 @@ pub(crate) fn render(app: &mut App, ctx: &egui::Context) {
                 published_count,
             } => {
                 ui.heading("MQTT Client");
-                ui.label(format!("Broker: {}", mqtt_login.broker_addr()));
+                ui.label(format!(
+                    "Connection: {}",
+                    mqtt_login.display_connection_label()
+                ));
                 ui.label(format!("Status: {connection_status}"));
                 if let Some(err) = last_error {
                     ui.colored_label(ui.visuals().warn_fg_color, format!("Info: {err}"));

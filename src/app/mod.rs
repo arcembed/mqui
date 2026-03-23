@@ -68,10 +68,23 @@ impl App {
                 let custom_name = mqtt_login.name.trim();
                 let title = if !custom_name.is_empty() {
                     custom_name.to_string()
-                } else if mqtt_login.broker.is_empty() {
-                    format!("Client {id}")
+                } else if mqtt_login.connection_mode == crate::models::mqtt::ConnectionInputMode::Url {
+                    let connection_url = mqtt_login.connection_url.trim();
+                    if !connection_url.is_empty() {
+                        connection_url.to_string()
+                    } else {
+                        mqtt_login
+                            .resolve_connection()
+                            .map(|resolved| resolved.display_label)
+                            .unwrap_or_else(|_| format!("Client {id}"))
+                    }
+                } else if !mqtt_login.broker.trim().is_empty() {
+                    mqtt_login.broker.trim().to_string()
                 } else {
-                    mqtt_login.broker.clone()
+                    mqtt_login
+                        .resolve_connection()
+                        .map(|resolved| resolved.display_label)
+                        .unwrap_or_else(|_| format!("Client {id}"))
                 };
                 (
                     title,
@@ -270,6 +283,10 @@ impl App {
         let profile_name = self.mqtt_form.name.trim();
         if profile_name.is_empty() {
             self.profile_status = Some("Name is required to save configuration".to_string());
+            return;
+        }
+        if let Err(err) = self.mqtt_form.resolve_connection() {
+            self.profile_status = Some(err);
             return;
         }
 
